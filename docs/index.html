@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AI Final Cut Editor</title>
+  <meta name="description" content="Open-source AI assistant editor for Final Cut Pro. Turn a photo and video album into a vertical-first EDL and FCPXML on your Mac." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="atmosphere" aria-hidden="true">
+    <div class="orb orb-a"></div>
+    <div class="orb orb-b"></div>
+    <div class="grain"></div>
+  </div>
+
+  <header class="top">
+    <p class="wordmark">AI Final Cut</p>
+    <nav>
+      <a href="#about">About</a>
+      <a href="#how">How it works</a>
+      <a href="https://github.com/kantologist/ai-finalcut-editor">GitHub</a>
+      <a class="nav-cta" href="https://github.com/kantologist/ai-finalcut-editor/releases/latest/download/AI-Final-Cut-Editor.dmg">Download for Mac</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero">
+      <p class="eyebrow">Open source · macOS</p>
+      <h1>Album to Final Cut, with an editor that already knows the brief.</h1>
+      <p class="lede">
+        AI Final Cut Editor is a local Mac app that turns photos and videos into a
+        validated edit list and FCPXML you can import into Final Cut Pro.
+        Vision analysis and planning run through OpenAI; the XML is written in Python — never by the model.
+      </p>
+      <div class="cta-row">
+        <a class="btn primary" href="https://github.com/kantologist/ai-finalcut-editor/releases/latest/download/AI-Final-Cut-Editor.dmg">
+          Download Mac app
+        </a>
+        <a class="btn ghost" href="https://github.com/kantologist/ai-finalcut-editor/releases/latest">
+          Latest release
+        </a>
+        <a class="btn ghost" href="https://github.com/kantologist/ai-finalcut-editor">
+          View source
+        </a>
+      </div>
+      <p class="fine">macOS 12+ · Apple Silicon &amp; Intel via source · requires ffmpeg and an OpenAI API key</p>
+    </section>
+
+    <section id="about" class="panel">
+      <p class="eyebrow">About the project</p>
+      <h2>A private cutting room on your Mac</h2>
+      <p>
+        Most AI video tools upload your footage to a cloud editor. This one stays on your machine.
+        You add media, pick a frame (9:16, 16:9, 1:1, 4:5, or custom), choose a model, and create.
+        The app builds proxy frames, scores shots, plans an Edit Decision List, then writes FCPXML
+        that Final Cut can actually import.
+      </p>
+      <ul class="features">
+        <li>
+          <strong>Native desktop app</strong>
+          Native window around a local studio UI — Create, Media, Projects, Settings.
+        </li>
+        <li>
+          <strong>Your settings, not ours</strong>
+          Aspect ratio, pacing, style, AI model, and API key live in Settings.
+        </li>
+        <li>
+          <strong>Safe EDL</strong>
+          The model may only pick from ranked candidates. Unknown filenames are dropped.
+        </li>
+        <li>
+          <strong>Deterministic FCPXML</strong>
+          Portrait fills, landscape fits, vertical-first grouping, slightly longer holds.
+        </li>
+      </ul>
+    </section>
+
+    <section id="how" class="panel">
+      <p class="eyebrow">Pipeline</p>
+      <h2>From folder to timeline</h2>
+      <ol class="steps">
+        <li><span>01</span> Inspect the album and index every clip</li>
+        <li><span>02</span> Sample proxy frames for vision</li>
+        <li><span>03</span> Analyze scenes and rank candidate shots</li>
+        <li><span>04</span> Plan a validated EDL with the model you chose</li>
+        <li><span>05</span> Export FCPXML for Final Cut Pro</li>
+      </ol>
+      <p class="lede tight">
+        Failed jobs can retry from the last completed step instead of starting over.
+        Revise with a sentence: “longer holds, end on the ocean.”
+      </p>
+    </section>
+
+    <section class="panel download-band">
+      <div>
+        <h2>Get the Mac app</h2>
+        <p>Download the latest DMG from GitHub Releases. First open may need Right-click → Open until the app is signed.</p>
+      </div>
+      <a class="btn primary" href="https://github.com/kantologist/ai-finalcut-editor/releases/latest/download/AI-Final-Cut-Editor.dmg">
+        Download AI-Final-Cut-Editor.dmg
+      </a>
+    </section>
+  </main>
+
+  <footer>
+    <p>MIT License · <a href="https://github.com/kantologist/ai-finalcut-editor">kantologist/ai-finalcut-editor</a></p>
+  </footer>
+</body>
+</html>

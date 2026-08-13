@@ -1,0 +1,43 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv
+
+# Secrets
+.env
+
+# Packaging
+*.dmg
+packaging/*.icns
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Workspace media / generated artifacts (keep folder structure via .gitkeep)
+workspace/settings.json
+workspace/originals/*
+!workspace/originals/.gitkeep
+workspace/proxies/*
+!workspace/proxies/.gitkeep
+workspace/frames/*
+!workspace/frames/.gitkeep
+workspace/metadata/*
+!workspace/metadata/.gitkeep
+workspace/analysis/*
+!workspace/analysis/.gitkeep
+workspace/edits/*
+!workspace/edits/.gitkeep
+workspace/output/*
+!workspace/output/.gitkeep

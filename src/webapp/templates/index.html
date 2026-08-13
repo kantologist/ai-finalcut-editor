@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AI Final Cut</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Figtree:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/app.css" />
+</head>
+<body>
+  <div class="atmosphere" aria-hidden="true">
+    <div class="orb orb-a"></div>
+    <div class="orb orb-b"></div>
+    <div class="grain"></div>
+  </div>
+
+  <header class="app-top">
+    <div class="brand-block">
+      <p class="brand">AI Final Cut</p>
+      <p class="tagline">Album to Final Cut — shaped by your settings</p>
+    </div>
+    <nav class="app-nav" aria-label="Main">
+      <button type="button" class="nav-btn active" data-view="create">Create</button>
+      <button type="button" class="nav-btn" data-view="media">Media</button>
+      <button type="button" class="nav-btn" data-view="projects">Projects</button>
+      <button type="button" class="nav-btn" data-view="settings">Settings</button>
+    </nav>
+  </header>
+
+  <main class="app-main">
+    <!-- CREATE -->
+    <section id="view-create" class="view active" aria-labelledby="create-title">
+      <div class="studio-grid">
+        <div class="studio-primary">
+          <p class="eyebrow">New project</p>
+          <h1 id="create-title">Make an edit</h1>
+          <p class="lede">Your frame size, pacing, and AI model come from Settings. Upload media, then create.</p>
+
+          <div class="frame-chip" id="frame-chip" aria-live="polite">
+            <span class="frame-preview" id="frame-preview" data-ratio="9:16"></span>
+            <div>
+              <strong id="frame-chip-label">9:16 · Vertical</strong>
+              <span id="frame-chip-detail">{{ summary.config.sequence_width }}×{{ summary.config.sequence_height }}</span>
+            </div>
+            <button type="button" class="text-link" data-goto="settings">Change in Settings</button>
+          </div>
+
+          <form id="create-form" class="form studio-form">
+            <label>
+              <span>Project name</span>
+              <input name="name" type="text" value="{{ summary.config.default_name }}" required />
+            </label>
+            <div class="row">
+              <label>
+                <span>Length (seconds)</span>
+                <input name="duration" type="number" min="10" max="600" step="1" value="{{ summary.config.default_duration|int }}" required />
+              </label>
+              <label>
+                <span>Style</span>
+                <select name="style" id="create-style-select">
+                  {% for style in summary.styles %}
+                  <option value="{{ style }}" {% if style == summary.config.default_style %}selected{% endif %}>{{ style }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+            </div>
+            <label>
+              <span>AI model</span>
+              <select name="model" id="create-model-select" class="model-select" required>
+                {% for m in summary.models %}
+                <option
+                  value="{{ m.id }}"
+                  {% if m.selected %}selected{% endif %}
+                  data-task="{{ m.task_score if m.task_score is not none else '' }}"
+                  data-vision="{{ m.vision_score if m.vision_score is not none else '' }}"
+                  data-edit="{{ m.edit_score if m.edit_score is not none else '' }}"
+                  data-tier="{{ m.cost_tier }}"
+                  data-create="{{ m.est_create_usd if m.est_create_usd is not none else '' }}"
+                  data-revise="{{ m.est_revise_usd if m.est_revise_usd is not none else '' }}"
+                  data-in="{{ m.input_per_mtok if m.input_per_mtok is not none else '' }}"
+                  data-out="{{ m.output_per_mtok if m.output_per_mtok is not none else '' }}"
+                  data-blurb="{{ m.blurb }}"
+                >
+                  {{ m.label }} · {{ m.task_score if m.task_score is not none else '?' }}/10 · {{ m.cost_tier }}{% if m.recommended %} · recommended{% endif %}
+                </option>
+                {% endfor %}
+              </select>
+            </label>
+            <div id="create-model-meta" class="model-meta" aria-live="polite"></div>
+
+            <details class="more-options">
+              <summary>More options</summary>
+              <label class="check">
+                <input name="skip_analyze" type="checkbox" checked />
+                <span>Reuse existing scene analysis (faster)</span>
+              </label>
+              <label class="check">
+                <input name="force" type="checkbox" />
+                <span>Rebuild proxies and analysis from scratch</span>
+              </label>
+            </details>
+
+            <button type="submit" class="primary xl">Create edit</button>
+          </form>
+          <p class="meta" id="create-meta">
+            {{ summary.originals_count }} clips in library · {{ summary.analysis_count }} already analyzed
+          </p>
+        </div>
+
+        <aside class="studio-side">
+          <div class="panel soft">
+            <div class="console-head">
+              <h2 id="console-title">Progress</h2>
+              <div class="console-actions">
+                <button type="button" id="retry-job" class="ghost hidden">Retry from last step</button>
+                <span id="job-status" class="status idle">idle</span>
+              </div>
+            </div>
+            <pre id="log" class="log" aria-live="polite"></pre>
+            <div id="result" class="result hidden"></div>
+          </div>
+
+          <div class="panel soft revise-panel">
+            <h2 id="revise-title">Revise</h2>
+            <p class="lede tight">Describe what to change. A new version is saved automatically.</p>
+            <form id="revise-form" class="form">
+              <label>
+                <span>Project</span>
+                <select name="edl" id="edl-select" required>
+                  {% if summary.edits %}
+                    {% for edit in summary.edits %}
+                    <option value="{{ edit.id }}">{{ edit.title }} ({{ edit.stem }})</option>
+                    {% endfor %}
+                  {% else %}
+                    <option value="" disabled selected>No projects yet</option>
+                  {% endif %}
+                </select>
+              </label>
+              <label>
+                <span>Notes</span>
+                <textarea name="notes" rows="3" placeholder="Longer holds, more people, end on the ocean." required></textarea>
+              </label>
+              <label>
+                <span>AI model</span>
+                <select name="model" id="revise-model-select" class="model-select">
+                  {% for m in summary.models %}
+                  <option
+                    value="{{ m.id }}"
+                    {% if m.selected %}selected{% endif %}
+                    data-task="{{ m.task_score if m.task_score is not none else '' }}"
+                    data-vision="{{ m.vision_score if m.vision_score is not none else '' }}"
+                    data-edit="{{ m.edit_score if m.edit_score is not none else '' }}"
+                    data-tier="{{ m.cost_tier }}"
+                    data-create="{{ m.est_create_usd if m.est_create_usd is not none else '' }}"
+                    data-revise="{{ m.est_revise_usd if m.est_revise_usd is not none else '' }}"
+                    data-in="{{ m.input_per_mtok if m.input_per_mtok is not none else '' }}"
+                    data-out="{{ m.output_per_mtok if m.output_per_mtok is not none else '' }}"
+                    data-blurb="{{ m.blurb }}"
+                  >
+                    {{ m.label }} · {{ m.task_score if m.task_score is not none else '?' }}/10 · {{ m.cost_tier }}{% if m.recommended %} · recommended{% endif %}
+                  </option>
+                  {% endfor %}
+                </select>
+              </label>
+              <div id="revise-model-meta" class="model-meta" aria-live="polite"></div>
+              <button type="submit" class="primary" {% if not summary.edits %}disabled{% endif %}>Revise edit</button>
+            </form>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- MEDIA -->
+    <section id="view-media" class="view" aria-labelledby="media-title" hidden>
+      <div class="view-head">
+        <div>
+          <p class="eyebrow">Library</p>
+          <h1 id="media-title">Media</h1>
+          <p class="lede">Add photos and videos from your computer. They stay on this Mac.</p>
+        </div>
+        <button type="button" id="refresh-media" class="ghost">Refresh</button>
+      </div>
+
+      <form id="upload-form" class="upload-bar">
+        <label class="file-pick">
+          <span>Choose folder</span>
+          <input id="folder-input" type="file" webkitdirectory directory multiple />
+        </label>
+        <label class="file-pick">
+          <span>Or files</span>
+          <input id="files-input" type="file" multiple accept="image/*,video/*,.heic,.HEIC,.mov,.MOV,.mp4,.MP4" />
+        </label>
+        <label class="check compact">
+          <input name="replace" type="checkbox" />
+          <span>Replace same names</span>
+        </label>
+        <button type="submit" class="primary" id="upload-btn" disabled>Upload</button>
+        <p id="upload-status" class="upload-status" aria-live="polite"></p>
+      </form>
+
+      <p class="meta" id="media-meta">
+        {{ summary.videos_count }} videos · {{ summary.photos_count }} photos · {{ summary.originals_count }} total
+      </p>
+
+      <div id="media-grid" class="media-grid">
+        {% for item in summary.media %}
+        <article
+          class="media-card"
+          data-name="{{ item.name }}"
+          data-rel="{{ item.rel }}"
+          data-kind="{{ item.kind }}"
+          data-preview="{{ item.preview }}"
+          data-thumb="{{ item.thumb or '' }}"
+          data-size="{{ item.size_label }}"
+          data-duration="{{ item.duration if item.duration is not none else '' }}"
+        >
+          <button type="button" class="media-open" aria-label="Preview {{ item.name }}">
+            <span class="media-thumb">
+              {% if item.thumb %}
+              <img src="{{ item.thumb }}" alt="" loading="lazy" />
+              {% else %}
+              <span class="media-placeholder">{{ item.ext|upper }}</span>
+              {% endif %}
+              <span class="media-badge">{{ item.kind }}</span>
+            </span>
+            <span class="media-name">{{ item.name }}</span>
+            <span class="media-sub">{{ item.size_label }}{% if item.duration %} · {{ '%.1f'|format(item.duration) }}s{% endif %}</span>
+          </button>
+          <button type="button" class="media-delete" data-rel="{{ item.rel }}" data-name="{{ item.name }}" aria-label="Delete {{ item.name }}">Remove</button>
+        </article>
+        {% else %}
+        <p class="empty-media">No media yet — choose a folder to get started.</p>
+        {% endfor %}
+      </div>
+    </section>
+
+    <!-- PROJECTS -->
+    <section id="view-projects" class="view" aria-labelledby="library-title" hidden>
+      <div class="view-head">
+        <div>
+          <p class="eyebrow">Exports</p>
+          <h1 id="library-title">Projects</h1>
+          <p class="lede">Download EDL or FCPXML for Final Cut Pro.</p>
+        </div>
+        <div class="library-actions">
+          <button type="button" id="refresh-edits" class="ghost">Refresh</button>
+          <button type="button" id="clear-outputs" class="ghost danger" {% if not summary.edits %}disabled{% endif %}>Clear all</button>
+        </div>
+      </div>
+      <p id="library-status" class="config-status" aria-live="polite"></p>
+      <ul id="edit-list" class="edit-list">
+        {% for edit in summary.edits %}
+        <li data-id="{{ edit.id }}">
+          <div>
+            <strong>{{ edit.title }}</strong>
+            <span class="muted">{{ edit.cuts }} cuts · {{ edit.duration }}s</span>
+            {% if edit.notes %}<span class="note">{{ edit.notes }}</span>{% endif %}
+          </div>
+          <div class="actions">
+            <a href="/api/download/edl/{{ edit.id }}">EDL</a>
+            {% if edit.fcpxml %}
+            <a href="/api/download/fcpxml/{{ edit.stem }}.fcpxml">FCPXML</a>
+            {% endif %}
+            <button type="button" class="linkish danger edit-delete" data-id="{{ edit.id }}" data-title="{{ edit.title }}">Delete</button>
+          </div>
+        </li>
+        {% else %}
+        <li class="empty">No projects yet — create one from the Create tab.</li>
+        {% endfor %}
+      </ul>
+    </section>
+
+    <!-- SETTINGS -->
+    <section id="view-settings" class="view" aria-labelledby="settings-title" hidden>
+      <div class="view-head">
+        <div>
+          <p class="eyebrow">Preferences</p>
+          <h1 id="settings-title">Settings</h1>
+          <p class="lede">Everything the editor needs — frame size, pacing, model, and voice — lives here.</p>
+        </div>
+      </div>
+
+      <div class="config-tabs" role="tablist" aria-label="Settings sections">
+        <button type="button" class="config-tab active" data-pane="pane-frame">Frame</button>
+        <button type="button" class="config-tab" data-pane="pane-project">Defaults</button>
+        <button type="button" class="config-tab" data-pane="pane-api">API key</button>
+        <button type="button" class="config-tab" data-pane="pane-model">AI model</button>
+        <button type="button" class="config-tab" data-pane="pane-pacing">Pacing</button>
+        <button type="button" class="config-tab" data-pane="pane-styles">Styles</button>
+        <button type="button" class="config-tab" data-pane="pane-voice" data-prompt="editor">AI voice</button>
+        <button type="button" class="config-tab" data-pane="pane-advanced">Advanced</button>
+      </div>
+
+      <form id="settings-form" class="form settings-form">
+        <div id="pane-frame" class="config-pane active">
+          <h2 class="pane-title">Delivery frame</h2>
+          <p class="pane-copy">Choose how the finished sequence looks in Final Cut.</p>
+
+          <div class="aspect-grid" id="aspect-grid" role="radiogroup" aria-label="Aspect ratio">
+            <button type="button" class="aspect-card" data-aspect="9:16" data-w="1080" data-h="1920" aria-pressed="false">
+              <span class="aspect-shape" style="--ar: 9 / 16"></span>
+              <strong>9:16</strong>
+              <span>Vertical · Reels / TikTok</span>
+            </button>
+            <button type="button" class="aspect-card" data-aspect="16:9" data-w="1920" data-h="1080" aria-pressed="false">
+              <span class="aspect-shape" style="--ar: 16 / 9"></span>
+              <strong>16:9</strong>
+              <span>Landscape · YouTube</span>
+            </button>
+            <button type="button" class="aspect-card" data-aspect="1:1" data-w="1080" data-h="1080" aria-pressed="false">
+              <span class="aspect-shape" style="--ar: 1 / 1"></span>
+              <strong>1:1</strong>
+              <span>Square · Feed</span>
+            </button>
+            <button type="button" class="aspect-card" data-aspect="4:5" data-w="1080" data-h="1350" aria-pressed="false">
+              <span class="aspect-shape" style="--ar: 4 / 5"></span>
+              <strong>4:5</strong>
+              <span>Portrait · Instagram</span>
+            </button>
+            <button type="button" class="aspect-card" data-aspect="custom" aria-pressed="false">
+              <span class="aspect-shape" style="--ar: 3 / 2"></span>
+              <strong>Custom</strong>
+              <span>Set width &amp; height</span>
+            </button>
+          </div>
+
+          <div class="row custom-size" id="custom-size-row">
+            <label>
+              <span>Width (px)</span>
+              <input name="sequence_width" id="sequence-width" type="number" min="16" max="8192" step="1" value="{{ summary.config.sequence_width }}" required />
+            </label>
+            <label>
+              <span>Height (px)</span>
+              <input name="sequence_height" id="sequence-height" type="number" min="16" max="8192" step="1" value="{{ summary.config.sequence_height }}" required />
+            </label>
+          </div>
+
+          <label>
+            <span>How clips fill the frame</span>
+            <select name="spatial_conform">
+              <option value="fill_vertical_fit_wide" {% if summary.config.spatial_conform not in ["fill", "fit"] %}selected{% endif %}>Portrait fills · landscape fits (recommended)</option>
+              <option value="fill" {% if summary.config.spatial_conform == "fill" %}selected{% endif %}>Fill everything (may crop)</option>
+              <option value="fit" {% if summary.config.spatial_conform == "fit" %}selected{% endif %}>Fit everything (letterbox)</option>
+            </select>
+          </label>
+        </div>
+
+        <div id="pane-project" class="config-pane">
+          <h2 class="pane-title">Project defaults</h2>
+          <p class="pane-copy">Used when you open Create — change anytime before generating.</p>
+          <div class="row">
+            <label>
+              <span>Default name</span>
+              <input name="default_name" type="text" value="{{ summary.config.default_name }}" required />
+            </label>
+            <label>
+              <span>Default length (s)</span>
+              <input name="default_duration" type="number" min="10" max="600" step="1" value="{{ summary.config.default_duration }}" required />
+            </label>
+          </div>
+          <label>
+            <span>Default style</span>
+            <select name="default_style" id="default-style-select">
+              {% for style in summary.styles %}
+              <option value="{{ style }}" {% if style == summary.config.default_style %}selected{% endif %}>{{ style }}</option>
+              {% endfor %}
+            </select>
+          </label>
+        </div>
+
+        <div id="pane-api" class="config-pane">
+          <h2 class="pane-title">OpenAI API key</h2>
+          <p class="pane-copy">Required for scene analysis and editing. Stored only on this Mac — never uploaded with your projects.</p>
+          <label>
+            <span>API key</span>
+            <input
+              id="openai-api-key"
+              name="openai_api_key"
+              type="password"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="sk-…"
+            />
+          </label>
+          <label class="check">
+            <input id="openai-api-key-reveal" type="checkbox" />
+            <span>Show key</span>
+          </label>
+          <p class="meta" id="openai-api-key-status" aria-live="polite"></p>
+          <p class="pane-copy subtle">Get a key from <a class="inline-link" href="https://platform.openai.com/api-keys" target="_blank" rel="noreferrer">platform.openai.com/api-keys</a>.</p>
+        </div>
+
+        <div id="pane-model" class="config-pane">
+          <h2 class="pane-title">AI model</h2>
+          <p class="pane-copy">Balances quality, speed, and estimated cost for analysis and editing.</p>
+          <label>
+            <span>Model</span>
+            <select name="model" id="settings-model-select" class="model-select" required>
+              {% for m in summary.models %}
+              <option
+                value="{{ m.id }}"
+                {% if m.selected %}selected{% endif %}
+                data-task="{{ m.task_score if m.task_score is not none else '' }}"
+                data-vision="{{ m.vision_score if m.vision_score is not none else '' }}"
+                data-edit="{{ m.edit_score if m.edit_score is not none else '' }}"
+                data-tier="{{ m.cost_tier }}"
+                data-create="{{ m.est_create_usd if m.est_create_usd is not none else '' }}"
+                data-revise="{{ m.est_revise_usd if m.est_revise_usd is not none else '' }}"
+                data-in="{{ m.input_per_mtok if m.input_per_mtok is not none else '' }}"
+                data-out="{{ m.output_per_mtok if m.output_per_mtok is not none else '' }}"
+                data-blurb="{{ m.blurb }}"
+              >
+                {{ m.label }} · {{ m.task_score if m.task_score is not none else '?' }}/10 · {{ m.cost_tier }}{% if m.recommended %} · recommended{% endif %}
+              </option>
+              {% endfor %}
+            </select>
+          </label>
+          <div id="settings-model-meta" class="model-meta" aria-live="polite"></div>
+        </div>
+
+        <div id="pane-pacing" class="config-pane">
+          <h2 class="pane-title">Pacing</h2>
+          <p class="pane-copy">How long shots can hold before the cut moves on.</p>
+          <div class="row">
+            <label>
+              <span>Max shot length (s)</span>
+              <input name="max_video_source_duration" type="number" min="0.5" max="30" step="0.1" value="{{ summary.config.max_video_source_duration }}" required />
+            </label>
+            <label>
+              <span>Still photo hold (s)</span>
+              <input name="default_still_duration" type="number" min="0.5" max="30" step="0.1" value="{{ summary.config.default_still_duration }}" required />
+            </label>
+          </div>
+          <label>
+            <span>Minimum “strong” shot score</span>
+            <input name="strong_score" type="number" min="0" max="1" step="0.01" value="{{ summary.config.strong_score }}" required />
+          </label>
+        </div>
+
+        <div class="config-actions sticky-save" id="settings-save-bar">
+          <button type="submit" class="primary">Save settings</button>
+          <p id="settings-status" class="config-status"></p>
+        </div>
+      </form>
+
+      <div id="pane-styles" class="config-pane">
+        <h2 class="pane-title">Style briefs</h2>
+        <p class="pane-copy">Short creative directions for each style preset.</p>
+        <form id="styles-form" class="style-list">
+          {% for style, brief in summary.config.style_briefs.items() %}
+          <div class="style-item">
+            <label>
+              <span>{{ style }}</span>
+              <textarea name="style_{{ style }}" class="style-editor" rows="3" required>{{ brief }}</textarea>
+            </label>
+          </div>
+          {% endfor %}
+          <div class="config-actions">
+            <button type="submit" class="primary">Save styles</button>
+            <p id="styles-status" class="config-status"></p>
+          </div>
+        </form>
+      </div>
+
+      <div id="pane-voice" class="config-pane">
+        <h2 class="pane-title">AI voice</h2>
+        <p class="pane-copy">Optional: refine how the editor and vision models think. Most people leave these alone.</p>
+        <div class="voice-tabs">
+          <button type="button" class="config-tab nested active" data-voice="editor">Editor</button>
+          <button type="button" class="config-tab nested" data-voice="vision">Vision</button>
+          <button type="button" class="config-tab nested" data-voice="revise">Revise</button>
+        </div>
+        <div id="prompt-editor" class="voice-pane active" data-prompt="editor">
+          <textarea id="prompt-editor-text" class="prompt-editor" spellcheck="false" aria-label="Editor brief"></textarea>
+          <div class="config-actions">
+            <button type="button" class="primary save-prompt" data-prompt="editor">Save editor brief</button>
+            <p class="config-status" data-status-for="editor"></p>
+          </div>
+        </div>
+        <div id="prompt-vision" class="voice-pane" data-prompt="vision" hidden>
+          <textarea id="prompt-vision-text" class="prompt-editor" spellcheck="false" aria-label="Vision prompt"></textarea>
+          <div class="config-actions">
+            <button type="button" class="primary save-prompt" data-prompt="vision">Save vision brief</button>
+            <p class="config-status" data-status-for="vision"></p>
+          </div>
+        </div>
+        <div id="prompt-revise" class="voice-pane" data-prompt="revise" hidden>
+          <textarea id="prompt-revise-text" class="prompt-editor" spellcheck="false" aria-label="Revise prompt"></textarea>
+          <div class="config-actions">
+            <button type="button" class="primary save-prompt" data-prompt="revise">Save revise brief</button>
+            <p class="config-status" data-status-for="revise"></p>
+          </div>
+        </div>
+      </div>
+
+      <div id="pane-advanced" class="config-pane">
+        <form id="advanced-form" class="form" onsubmit="return false;">
+          <h2 class="pane-title">Advanced</h2>
+          <p class="pane-copy">Tuning for reliability and scoring. Safe to leave as-is.</p>
+          <div class="row">
+            <label>
+              <span>Vision batch size</span>
+              <input form="settings-form" name="vision_batch_size" type="number" min="1" max="32" step="1" value="{{ summary.config.vision_batch_size }}" required />
+            </label>
+            <label>
+              <span>Pause between requests (s)</span>
+              <input form="settings-form" name="request_pause_sec" type="number" min="0" max="60" step="0.1" value="{{ summary.config.request_pause_sec }}" required />
+            </label>
+          </div>
+          <label>
+            <span>Max retries</span>
+            <input form="settings-form" name="max_retries" type="number" min="0" max="50" step="1" value="{{ summary.config.max_retries }}" required />
+          </label>
+          <p class="meta">Shot score weights (should sum near 1.0)</p>
+          <div class="weights-grid">
+            {% for key, value in summary.config.score_weights.items() %}
+            <label>
+              <span>{{ key|replace('_', ' ') }}</span>
+              <input form="settings-form" name="weight_{{ key }}" type="number" min="0" max="1" step="0.01" value="{{ value }}" required />
+            </label>
+            {% endfor %}
+          </div>
+          <p class="pane-copy subtle">Use Save settings on Frame / Defaults / Model / Pacing — advanced fields are included automatically.</p>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="preview-dialog" class="preview-dialog">
+    <form method="dialog" class="preview-head">
+      <strong id="preview-title"></strong>
+      <button type="submit" class="ghost">Close</button>
+    </form>
+    <div id="preview-body" class="preview-body"></div>
+  </dialog>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

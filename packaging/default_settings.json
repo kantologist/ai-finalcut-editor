@@ -1,0 +1,29 @@
+{
+  "model": "gpt-5.4",
+  "default_name": "Travel Edit",
+  "default_duration": 90.0,
+  "default_style": "cinematic",
+  "strong_score": 0.65,
+  "max_video_source_duration": 6.0,
+  "default_still_duration": 2.5,
+  "vision_batch_size": 8,
+  "request_pause_sec": 1.0,
+  "max_retries": 12,
+  "spatial_conform": "fill_vertical_fit_wide",
+  "sequence_width": 1080,
+  "sequence_height": 1920,
+  "score_weights": {
+    "visual_interest": 0.25,
+    "composition": 0.1,
+    "stability": 0.15,
+    "story_value": 0.15,
+    "uniqueness": 0.25,
+    "user_priority": 0.1
+  },
+  "style_briefs": {
+    "cinematic": "Style: cinematic vertical travel film (9:16) — taller establishing holds (~4–6s), vertical/square block first then landscape, rising pace, strong closer.",
+    "documentary": "Style: documentary vertical (9:16) — observational coverage, unhurried holds, vertical coverage first then wide B-roll, favor story_value and center framing.",
+    "social": "Style: social vertical highlight reel (9:16) — energetic but not frantic (~3–5s holds), phone-first vertical block first, landscape accents later.",
+    "highlight": "Style: vertical highlight reel (9:16) — strongest moments with slightly longer holds, portrait/square grouped first, landscape only after, minimal stills."
+  }
+}

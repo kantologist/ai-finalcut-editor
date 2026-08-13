@@ -1,0 +1,12 @@
+# Default settings shipped with the repo / Mac app.
+# User overrides live in workspace/settings.json (dev) or
+# ~/Library/Application Support/AIFinalCutEditor/workspace/settings.json (app).
+
+model: gpt-5.4
+default_name: Lagos
+default_duration: 90
+default_style: cinematic
+max_video_source_duration: 6.0
+sequence_width: 1080
+sequence_height: 1920
+spatial_conform: fill_vertical_fit_wide
