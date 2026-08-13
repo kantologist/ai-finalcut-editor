@@ -29,35 +29,67 @@ def _otool_libs(binary: Path) -> list[str]:
         text=True,
     )
     libs: list[str] = []
-    for line in result.stdout.splitlines()[1:]:
+    lines = result.stdout.splitlines()
+    for line in lines[1:]:
         path = line.strip().split(" (", 1)[0].strip()
         if path:
             libs.append(path)
     return libs
 
 
-def _otool_id(binary: Path) -> str | None:
+def _otool_rpaths(binary: Path) -> list[Path]:
     result = subprocess.run(
-        ["otool", "-D", str(binary)],
+        ["otool", "-l", str(binary)],
         check=True,
         capture_output=True,
         text=True,
     )
-    lines = [ln.strip() for ln in result.stdout.splitlines() if ln.strip()]
-    if len(lines) >= 2:
-        return lines[1]
-    return None
+    rpaths: list[Path] = []
+    lines = result.stdout.splitlines()
+    for index, line in enumerate(lines):
+        if "cmd LC_RPATH" not in line:
+            continue
+        for follow in lines[index + 1 : index + 6]:
+            text = follow.strip()
+            if text.startswith("path "):
+                raw = text.split("path ", 1)[1].split(" (", 1)[0].strip()
+                if raw.startswith("@loader_path"):
+                    raw = raw.replace("@loader_path", str(binary.parent), 1)
+                elif raw.startswith("@executable_path"):
+                    raw = raw.replace("@executable_path", str(binary.parent), 1)
+                path = Path(raw)
+                if path.is_dir():
+                    rpaths.append(path)
+                break
+    return rpaths
+
+
+def _is_bundled_relative(path: str) -> bool:
+    return path.startswith(("@loader_path/", "@executable_path/", "@rpath/"))
 
 
 def _is_system(path: str) -> bool:
+    if _is_bundled_relative(path):
+        return False
     return path.startswith(SYSTEM_PREFIXES) or path.startswith("@")
 
 
 def _resolve(dep: str, loader: Path) -> Path | None:
     if dep.startswith("@loader_path/"):
-        return (loader.parent / dep.split("/", 1)[1]).resolve()
+        rest = dep.split("/", 1)[1] if "/" in dep else ""
+        candidate = (loader.parent / rest).resolve()
+        return candidate if candidate.is_file() else None
     if dep.startswith("@executable_path/"):
-        return (loader.parent / dep.split("/", 1)[1]).resolve()
+        rest = dep.split("/", 1)[1] if "/" in dep else ""
+        candidate = (loader.parent / rest).resolve()
+        return candidate if candidate.is_file() else None
+    if dep.startswith("@rpath/"):
+        name = dep.split("/", 1)[1] if "/" in dep else Path(dep).name
+        for root in _otool_rpaths(loader):
+            candidate = (root / name).resolve()
+            if candidate.is_file():
+                return candidate
+        return None
     raw = Path(dep)
     if raw.is_file():
         return raw.resolve()
@@ -75,8 +107,7 @@ def _collect(seed: Path) -> dict[Path, Path]:
         if current in seen or not current.is_file():
             continue
         seen.add(current)
-        dest_name = current.name
-        mapping[current] = DEST / dest_name
+        mapping[current] = DEST / current.name
         for dep in _otool_libs(current):
             if _is_system(dep):
                 continue
@@ -94,30 +125,32 @@ def _rewrite(dest: Path, mapping: dict[Path, Path]) -> None:
     new_id = f"@loader_path/{dest.name}"
     subprocess.run(["install_name_tool", "-id", new_id, str(dest)], check=False)
     for dep in _otool_libs(dest):
-        if _is_system(dep) or dep.startswith("@loader_path/"):
+        if dep.startswith("@loader_path/") or _is_system(dep):
             continue
         resolved = _resolve(dep, dest)
-        if resolved is None:
-            # Already copied by basename? try last path component.
+        dest_name = None
+        if resolved is not None:
+            for src, dst in mapping.items():
+                if src == resolved or src.name == resolved.name:
+                    dest_name = dst.name
+                    break
+        if dest_name is None:
             name = Path(dep).name
             if (DEST / name).is_file():
-                subprocess.run(
-                    ["install_name_tool", "-change", dep, f"@loader_path/{name}", str(dest)],
-                    check=False,
-                )
-            continue
-        source = resolved
-        # mapping keys are original brew paths
-        dest_name = None
-        for src, dst in mapping.items():
-            if src == source or src.name == source.name:
-                dest_name = dst.name
-                break
+                dest_name = name
         if dest_name:
             subprocess.run(
                 ["install_name_tool", "-change", dep, f"@loader_path/{dest_name}", str(dest)],
                 check=False,
             )
+
+
+def _first_line(*chunks: str) -> str:
+    for chunk in chunks:
+        for line in (chunk or "").splitlines():
+            if line.strip():
+                return line.strip()
+    return ""
 
 
 def main() -> None:
@@ -148,17 +181,20 @@ def main() -> None:
         )
 
     bundled_ffmpeg = DEST / "ffmpeg"
-    bundled_ffprobe = DEST / "ffprobe"
+    if not bundled_ffmpeg.is_file():
+        raise SystemExit("ffmpeg was not copied into packaging/ffmpeg")
+
     probe = subprocess.run(
         [str(bundled_ffmpeg), "-version"],
         capture_output=True,
         text=True,
     )
+    version = _first_line(probe.stdout, probe.stderr)
     if probe.returncode != 0:
         print(probe.stdout, probe.stderr, file=sys.stderr)
         raise SystemExit("Bundled ffmpeg failed to start")
     print(f"Bundled {len(list(DEST.glob('*')))} ffmpeg files into {DEST.relative_to(ROOT)}")
-    print(probe.stdout.splitlines()[0])
+    print(version or "ffmpeg bundled")
 
 
 if __name__ == "__main__":
