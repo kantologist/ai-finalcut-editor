@@ -5,7 +5,7 @@ Upload a travel album, get a vertical-first EDL + FCPXML you can import into FCP
 
 Runs entirely on your Mac: vision analysis + edit planning via OpenAI, deterministic FCPXML export in Python.
 
-**[Download the Mac app](https://github.com/kantologist/ai-finalcut-editor/releases/latest/download/AI-Final-Cut-Editor.dmg)** · [Project site](https://kantologist.github.io/ai-finalcut-editor/) · [Releases](https://github.com/kantologist/ai-finalcut-editor/releases/latest)
+**[Download the Mac app](https://github.com/kantologist/ai-finalcut-editor/releases/latest/download/AI-Final-Cut-Editor.dmg)** · [Project site](https://kantologist.github.io/ai-finalcut-editor/) · [GitHub](https://github.com/kantologist/ai-finalcut-editor)
 
 ---
 
