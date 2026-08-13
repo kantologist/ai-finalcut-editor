@@ -26,6 +26,7 @@ from fractions import Fraction
 from pathlib import Path
 from xml.dom import minidom
 
+from .ffmpeg import ffmpeg_exe
 from .paths import ROOT
 
 METADATA_PATH = ROOT / "workspace" / "metadata" / "media.json"
@@ -313,7 +314,7 @@ def ensure_still_video(media: MediaInfo, *, hold_seconds: float = 10.0) -> tuple
     if needs_build:
         # 29.97-compatible integer 30 fps keeps the still timebase simple.
         cmd = [
-            "ffmpeg",
+            ffmpeg_exe(),
             "-y",
             "-hide_banner",
             "-loglevel",

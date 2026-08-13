@@ -11,6 +11,9 @@ uv sync --extra dev
 echo "==> Cleaning previous build"
 rm -rf build dist/macos
 
+echo "==> Bundling ffmpeg + ffprobe"
+uv run python packaging/bundle_ffmpeg.py
+
 echo "==> Running PyInstaller"
 uv run pyinstaller packaging/macos.spec --noconfirm --distpath dist/macos --workpath build/pyinstaller
 

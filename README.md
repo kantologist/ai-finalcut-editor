@@ -23,7 +23,7 @@ Runs entirely on your Mac: vision analysis + edit planning via OpenAI, determini
 1. Get the latest installer: **[AI-Final-Cut-Editor.dmg](https://github.com/kantologist/ai-finalcut-editor/releases/latest/download/AI-Final-Cut-Editor.dmg)**
 2. Open the disk image and drag **AI Final Cut Editor** into Applications.
 3. First launch may need **Right-click → Open** (the build is unsigned until you notarize it).
-4. Add your OpenAI API key in **Settings → API key**. Install [ffmpeg](https://ffmpeg.org/) (`brew install ffmpeg`).
+4. Add your OpenAI API key in **Settings → API key**. ffmpeg is already inside the app.
 
 Library data lives in `~/Library/Application Support/AIFinalCutEditor/`.
 
@@ -32,9 +32,9 @@ Library data lives in `~/Library/Application Support/AIFinalCutEditor/`.
 | Tool | Notes |
 |------|--------|
 | macOS 12+ | Desktop app & FCPXML workflow |
-| Python 3.10+ | [uv](https://github.com/astral-sh/uv) recommended (developers) |
-| [ffmpeg](https://ffmpeg.org/) | Proxy frames + still→MOV (`brew install ffmpeg`) |
-| OpenAI API key | Vision + edit planning |
+| OpenAI API key | Vision + edit planning (Settings → API key) |
+| Python 3.10+ | Developers only — [uv](https://github.com/astral-sh/uv) recommended |
+| [ffmpeg](https://ffmpeg.org/) | Bundled in the Mac app. Developers running from source: `brew install ffmpeg` |
 
 ## Quick start (developers)
 

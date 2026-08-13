@@ -10,6 +10,17 @@ block_cipher = None
 
 webview_datas, webview_binaries, webview_hidden = collect_all("webview")
 
+ffmpeg_dir = ROOT / "packaging" / "ffmpeg"
+ffmpeg_binaries = [
+    (str(path), "ffmpeg")
+    for path in sorted(ffmpeg_dir.iterdir())
+    if path.is_file() and path.name != "README.md"
+]
+if not any(Path(src).name == "ffmpeg" for src, _ in ffmpeg_binaries):
+    raise SystemExit(
+        "packaging/ffmpeg/ffmpeg is missing. Run: uv run python packaging/bundle_ffmpeg.py"
+    )
+
 datas = [
     (str(ROOT / "prompts"), "prompts"),
     (str(ROOT / "packaging" / "bundle_workspace"), "workspace"),
@@ -34,12 +45,13 @@ hiddenimports = [
     "src.desktop",
     "src.webapp.app",
     "src.webapp.jobs",
+    "src.ffmpeg",
 ] + webview_hidden
 
 a = Analysis(
     [str(ROOT / "packaging" / "macos_entry.py")],
     pathex=[str(ROOT)],
-    binaries=webview_binaries,
+    binaries=webview_binaries + ffmpeg_binaries,
     datas=datas,
     hiddenimports=hiddenimports,
     hookspath=[],

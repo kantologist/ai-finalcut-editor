@@ -13,6 +13,7 @@ from typing import Any, Literal
 from PIL import Image, ExifTags
 from pydantic import BaseModel, Field
 
+from .ffmpeg import ffprobe_exe
 from .paths import ROOT
 
 ORIGINALS_DIR = ROOT / "workspace" / "originals"
@@ -79,7 +80,7 @@ def _normalize_creation_time(raw: str | None) -> str | None:
 def _ffprobe(path: Path) -> dict[str, Any]:
     result = subprocess.run(
         [
-            "ffprobe",
+            ffprobe_exe(),
             "-v",
             "quiet",
             "-print_format",

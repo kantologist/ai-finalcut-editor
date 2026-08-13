@@ -18,6 +18,8 @@ wheels/
 # Packaging
 *.dmg
 packaging/*.icns
+packaging/ffmpeg/*
+!packaging/ffmpeg/README.md
 
 # Editors / OS
 .DS_Store

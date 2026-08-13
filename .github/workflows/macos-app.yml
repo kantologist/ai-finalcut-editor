@@ -23,6 +23,9 @@ jobs:
       - name: Set up Python
         run: uv python install 3.12
 
+      - name: Install ffmpeg
+        run: brew install ffmpeg
+
       - name: Build .app / .dmg
         run: |
           chmod +x packaging/build_macos.sh

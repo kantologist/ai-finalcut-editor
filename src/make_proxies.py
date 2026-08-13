@@ -17,6 +17,7 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
+from .ffmpeg import ffmpeg_exe
 from .paths import ROOT
 
 METADATA_PATH = ROOT / "workspace" / "metadata" / "media.json"
@@ -69,7 +70,7 @@ def extract_frames(record: MediaRecord, *, force: bool = False) -> list[Path]:
     clear_frames(record.id)
     output = frame_pattern(record.id)
     cmd = [
-        "ffmpeg",
+        ffmpeg_exe(),
         "-y",
         "-hide_banner",
         "-loglevel",
