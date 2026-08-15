@@ -731,13 +731,13 @@ def create_app() -> FastAPI:
         path = _safe_under(EDITS_DIR, name)
         if not path.is_file():
             raise HTTPException(status_code=404, detail="EDL not found")
-        return FileResponse(path, filename=path.name, media_type="application/json")
+        return FileResponse(path, filename=path.name, media_type="application/octet-stream")
 
     @app.get("/api/download/fcpxml/{name}")
     def download_fcpxml(name: str) -> FileResponse:
         path = _safe_under(OUTPUT_DIR, name)
         if not path.is_file():
             raise HTTPException(status_code=404, detail="FCPXML not found")
-        return FileResponse(path, filename=path.name, media_type="application/xml")
+        return FileResponse(path, filename=path.name, media_type="application/octet-stream")
 
     return app

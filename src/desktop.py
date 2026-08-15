@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import argparse
+import shutil
 import socket
-import sys
+import subprocess
 import threading
 import time
+from pathlib import Path
 from typing import Any
 
 from .paths import APP_NAME, ensure_app_home
@@ -27,6 +29,41 @@ def _wait_for_server(host: str, port: int, timeout: float = 20.0) -> None:
         except OSError:
             time.sleep(0.1)
     raise RuntimeError(f"Desktop UI server did not start on {host}:{port}")
+
+
+class FileBridge:
+    """JS API so downloads use a Save dialog instead of navigating the WebKit window."""
+
+    def __init__(self) -> None:
+        self.window: Any = None
+
+    def save_export(self, kind: str, name: str) -> str:
+        from .main import EDITS_DIR, OUTPUT_DIR
+
+        filename = Path(str(name or "")).name
+        if not filename or filename in {".", ".."}:
+            raise FileNotFoundError("Invalid filename")
+        base = EDITS_DIR if str(kind).lower() == "edl" else OUTPUT_DIR
+        source = (base / filename).resolve()
+        if source.parent != base.resolve() or not source.is_file():
+            raise FileNotFoundError(filename)
+        if self.window is None:
+            raise RuntimeError("Desktop window is not ready")
+
+        import webview
+
+        result = self.window.create_file_dialog(
+            webview.SAVE_DIALOG,
+            directory=str(Path.home() / "Downloads"),
+            save_filename=source.name,
+        )
+        if not result:
+            return ""
+        dest = Path(result[0] if isinstance(result, (list, tuple)) else result)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, dest)
+        subprocess.run(["open", "-R", str(dest)], check=False)
+        return str(dest)
 
 
 def _start_server(host: str, port: int) -> Any:
@@ -65,15 +102,17 @@ def run_desktop(*, host: str = "127.0.0.1", port: int | None = None) -> int:
     _wait_for_server(host, bind_port)
 
     url = f"http://{host}:{bind_port}/"
+    bridge = FileBridge()
     window = webview.create_window(
         APP_NAME,
         url=url,
+        js_api=bridge,
         width=1280,
         height=860,
         min_size=(960, 640),
         background_color="#1a1714",
     )
-    _ = window
+    bridge.window = window
     webview.start(debug=False)
     return 0
 

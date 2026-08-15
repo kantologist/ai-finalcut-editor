@@ -62,6 +62,73 @@
     logEl.scrollTop = logEl.scrollHeight;
   }
 
+  function filenameFromDisposition(header, fallback) {
+    if (!header) return fallback;
+    const star = header.match(/filename\*=UTF-8''([^;]+)/i);
+    if (star) return decodeURIComponent(star[1].trim());
+    const quoted = header.match(/filename="([^"]+)"/i);
+    if (quoted) return quoted[1];
+    const plain = header.match(/filename=([^;]+)/i);
+    if (plain) return plain[1].trim();
+    return fallback;
+  }
+
+  function parseDownloadHref(href) {
+    const url = new URL(href, window.location.origin);
+    const parts = url.pathname.split("/").filter(Boolean);
+    if (parts[0] !== "api" || parts[1] !== "download" || parts.length < 4) return null;
+    return {
+      kind: parts[2],
+      name: decodeURIComponent(parts.slice(3).join("/")),
+      href: `${url.pathname}${url.search}`,
+    };
+  }
+
+  function noteDownload(text) {
+    if (libraryStatus) libraryStatus.textContent = text;
+  }
+
+  async function saveDownload(href) {
+    const parsed = parseDownloadHref(href);
+    if (!parsed) return;
+    const api = window.pywebview && window.pywebview.api;
+    if (api && typeof api.save_export === "function") {
+      const saved = await api.save_export(parsed.kind, parsed.name);
+      if (saved) noteDownload(`Saved ${parsed.name}`);
+      return;
+    }
+    const res = await fetch(parsed.href);
+    if (!res.ok) throw new Error(`Download failed (${res.status})`);
+    const blob = await res.blob();
+    const filename = filenameFromDisposition(
+      res.headers.get("Content-Disposition"),
+      parsed.name
+    );
+    const objectUrl = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = objectUrl;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(objectUrl);
+    noteDownload(`Saved ${filename}`);
+  }
+
+  document.addEventListener(
+    "click",
+    (event) => {
+      const link = event.target.closest('a[href*="/api/download/"]');
+      if (!link) return;
+      event.preventDefault();
+      event.stopPropagation();
+      saveDownload(link.getAttribute("href") || "").catch((err) => {
+        noteDownload(String(err));
+      });
+    },
+    true
+  );
+
   function clearJobUi() {
     logEl.textContent = "";
     resultEl.classList.add("hidden");
