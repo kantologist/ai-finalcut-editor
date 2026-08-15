@@ -8,7 +8,8 @@ Critical Final Cut import rules this generator follows:
 - Keep rational times on the media/sequence timebase (do NOT reduce fractions —
   ``Fraction`` would turn ``120120/30000`` into ``1001/250``, which often breaks FCP).
 - Never put still images on ``<asset-clip>`` (known FCP null-deref crash). Convert
-  HEIC/JPEG stills into short H.264 MOV proxies first.
+  HEIC/JPEG stills into short H.264 MOV proxies at original pixel size, tagging
+  the source color space (no 1920 downscale, no Rec. 709 bake).
 - Use a simple ``library → event → project → sequence → spine`` structure.
 - Omit fragile extras (keywords with mixed timebases, invented format names).
 """
@@ -34,7 +35,7 @@ DEFAULT_EDL_PATH = ROOT / "workspace" / "edits" / "edit.json"
 DEFAULT_OUTPUT_PATH = ROOT / "workspace" / "output" / "lagos_v1.fcpxml"
 STILLS_DIR = ROOT / "workspace" / "proxies" / "stills"
 
-FCPXML_VERSION = "1.9"
+FCPXML_VERSION = "1.11"
 EVENT_NAME = "AI Travel Editor"
 PROJECT_NAME = "Lagos v1"
 
@@ -90,60 +91,76 @@ def sequence_aspect_label(width: int, height: int) -> str:
     return "9:16"
 
 
-def is_vertical_frame(src_w: int, src_h: int) -> bool:
-    """Portrait or square source (height >= width)."""
-    return src_h > 0 and src_w > 0 and src_h >= src_w
+_NCLC_PRIMARIES = {
+    "bt709": 1,
+    "bt470bg": 5,
+    "smpte170m": 6,
+    "smpte240m": 7,
+    "bt2020": 9,
+    "smpte431": 11,
+    "smpte432": 12,
+}
+_NCLC_TRANSFER = {
+    "bt709": 1,
+    "gamma22": 4,
+    "gamma28": 5,
+    "smpte170m": 6,
+    "smpte240m": 7,
+    "iec61966-2-1": 13,
+    "bt2020-10": 14,
+    "bt2020-12": 15,
+    "smpte2084": 16,
+    "arib-std-b67": 18,
+}
+_NCLC_MATRIX = {
+    "bt709": 1,
+    "bt470bg": 5,
+    "smpte170m": 6,
+    "smpte240m": 7,
+    "bt2020nc": 9,
+    "bt2020c": 10,
+    "smpte432": 12,
+}
 
 
-def fill_scale_for_aspect(
-    src_w: int,
-    src_h: int,
-    seq_w: int | None = None,
-    seq_h: int | None = None,
-) -> float:
-    """Zoom factor after Fit so the clip fills the sequence (Spatial Conform: Fill)."""
-    if seq_w is None or seq_h is None:
-        seq_w, seq_h = active_sequence_size()
-    if src_w <= 0 or src_h <= 0 or seq_w <= 0 or seq_h <= 0:
-        return 1.0
-    src_ar = src_w / src_h
-    seq_ar = seq_w / seq_h
-    if abs(src_ar - seq_ar) < 1e-3:
-        return 1.0
-    return max(src_ar / seq_ar, seq_ar / src_ar)
-
-
-def transform_scale_for_clip(
-    src_w: int,
-    src_h: int,
-    *,
-    seq_w: int,
-    seq_h: int,
-    mode: str,
-) -> float:
-    """Return adjust-transform scale (>1 ≈ Fill zoom). 1.0 leaves FCP default Fit."""
-    if mode == "fit":
-        return 1.0
-    if mode == "fill":
-        return fill_scale_for_aspect(src_w, src_h, seq_w, seq_h)
-    # Default / fill_vertical_fit_wide: portrait Fill, landscape Fit.
-    if is_vertical_frame(src_w, src_h):
-        return fill_scale_for_aspect(src_w, src_h, seq_w, seq_h)
-    return 1.0
+def fcpxml_color_space(
+    primaries: str | None,
+    transfer: str | None,
+    matrix: str | None,
+) -> str | None:
+    """NCLC string FCP understands, e.g. '1-1-1 (Rec. 709)'."""
+    if not primaries or not transfer:
+        return None
+    p = _NCLC_PRIMARIES.get(primaries.lower())
+    t = _NCLC_TRANSFER.get(transfer.lower())
+    m = _NCLC_MATRIX.get((matrix or primaries).lower()) if matrix or primaries else None
+    if p is None or t is None:
+        return None
+    if m is None:
+        m = 9 if p == 9 else 1
+    if p == 9 and t == 16:
+        label = "Rec. 2020 PQ"
+    elif p == 9 and t == 18:
+        label = "Rec. 2020 HLG"
+    elif p == 12:
+        label = "Display P3"
+    else:
+        label = "Rec. 709"
+    return f"{p}-{t}-{m} ({label})"
 
 
 def active_spatial_conform() -> str:
     try:
         from .settings import load_settings
 
-        mode = str(
-            load_settings().get("spatial_conform") or "fill_vertical_fit_wide"
-        ).strip().lower()
-        if mode in {"fill", "fit", "fill_vertical_fit_wide"}:
+        mode = str(load_settings().get("spatial_conform") or "fit").strip().lower()
+        if mode == "fill_vertical_fit_wide":
+            return "fit"
+        if mode in {"fill", "fit", "none"}:
             return mode
-        return "fill_vertical_fit_wide"
+        return "fit"
     except Exception:  # noqa: BLE001
-        return "fill_vertical_fit_wide"
+        return "fit"
 
 
 @dataclass(frozen=True)
@@ -155,6 +172,9 @@ class MediaInfo:
     height: int
     fps: float | None
     duration: float | None
+    color_primaries: str | None = None
+    color_transfer: str | None = None
+    color_space: str | None = None
 
 
 @dataclass(frozen=True)
@@ -239,6 +259,9 @@ def load_media(metadata_path: Path = METADATA_PATH) -> dict[str, MediaInfo]:
             height=int(row.get("height") or DEFAULT_SEQUENCE_HEIGHT),
             fps=(float(row["fps"]) if row.get("fps") is not None else None),
             duration=(float(row["duration"]) if row.get("duration") is not None else None),
+            color_primaries=row.get("color_primaries"),
+            color_transfer=row.get("color_transfer"),
+            color_space=row.get("color_space"),
         )
     return by_name
 
@@ -265,78 +288,119 @@ def is_still(media: MediaInfo) -> bool:
     return media.media_type == "image" or media.path.suffix.lower() in IMAGE_EXTENSIONS
 
 
-def _sips_jpeg(source: Path, out: Path) -> tuple[int, int]:
-    subprocess.run(
-        ["sips", "-Z", "1920", "-s", "format", "jpeg", str(source), "--out", str(out)],
-        check=True,
-        capture_output=True,
-    )
-    if not out.is_file() or out.stat().st_size < 1000:
-        raise RuntimeError(f"Failed to build JPEG from {source.name}")
-    probe = subprocess.run(
-        ["sips", "-g", "pixelWidth", "-g", "pixelHeight", str(out)],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    width = 1920
-    height = 1080
-    for line in probe.stdout.splitlines():
-        if "pixelWidth:" in line:
-            width = int(line.split(":")[-1].strip())
-        elif "pixelHeight:" in line:
-            height = int(line.split(":")[-1].strip())
-    return width, height
+def _even(value: int) -> int:
+    even = int(value) - (int(value) % 2)
+    return even if even >= 2 else 2
+
+
+_FFMPEG_PRIMARIES = {
+    "bt709",
+    "bt470m",
+    "bt470bg",
+    "smpte170m",
+    "smpte240m",
+    "film",
+    "bt2020",
+    "smpte428",
+    "smpte431",
+    "smpte432",
+}
+_FFMPEG_TRC = {
+    "bt709",
+    "gamma22",
+    "gamma28",
+    "smpte170m",
+    "smpte240m",
+    "linear",
+    "iec61966-2-1",
+    "bt2020-10",
+    "bt2020-12",
+    "smpte2084",
+    "arib-std-b67",
+}
+_FFMPEG_MATRIX = {
+    "bt709",
+    "fcc",
+    "bt470bg",
+    "smpte170m",
+    "smpte240m",
+    "bt2020nc",
+    "bt2020c",
+}
+
+
+def _ffmpeg_color_args(media: MediaInfo) -> list[str]:
+    args: list[str] = ["-movflags", "+write_colr"]
+    primaries = (media.color_primaries or "").lower()
+    transfer = (media.color_transfer or "").lower()
+    matrix = (media.color_space or "").lower()
+    if primaries in _FFMPEG_PRIMARIES:
+        args.extend(["-color_primaries", primaries])
+    if transfer in _FFMPEG_TRC:
+        args.extend(["-color_trc", transfer])
+    if matrix in _FFMPEG_MATRIX:
+        args.extend(["-colorspace", matrix])
+    return args
+
+
+def _encode_still_mov(source: Path, dest: Path, media: MediaInfo, duration: float) -> None:
+    cmd = [
+        ffmpeg_exe(),
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-loop",
+        "1",
+        "-i",
+        str(source),
+        "-t",
+        f"{duration:.3f}",
+        "-r",
+        "30",
+        "-c:v",
+        "libx264",
+        "-pix_fmt",
+        "yuv420p",
+        "-vf",
+        "scale=trunc(iw/2)*2:trunc(ih/2)*2:flags=lanczos+accurate_rnd+full_chroma_int",
+        *_ffmpeg_color_args(media),
+        "-an",
+        str(dest),
+    ]
+    subprocess.run(cmd, check=True)
 
 
 def ensure_still_video(media: MediaInfo, *, hold_seconds: float = 10.0) -> tuple[Path, int, int, float]:
     """
     FCP crashes when still images (JPEG/HEIC/PNG) are referenced via <asset-clip>.
     Convert each still into a short H.264 MOV so the spine is video-only.
+    Keep original pixel size and color tags — do not downscale or shift to Rec. 709.
     Returns (mov_path, width, height, duration_seconds).
     """
     STILLS_DIR.mkdir(parents=True, exist_ok=True)
     stem = Path(media.asset_name).stem
-    jpg = STILLS_DIR / f"{stem}.jpg"
-    mov = STILLS_DIR / f"{stem}.mov"
-    width, height = _sips_jpeg(media.path, jpg)
-
-    # Even dimensions required by yuv420p.
-    width -= width % 2
-    height -= height % 2
+    mov = STILLS_DIR / f"{stem}_hold.mov"
+    width = _even(media.width or DEFAULT_SEQUENCE_WIDTH)
+    height = _even(media.height or DEFAULT_SEQUENCE_HEIGHT)
     duration = max(hold_seconds, 4.0)
 
     needs_build = (
         not mov.is_file()
         or mov.stat().st_size < 1000
-        or mov.stat().st_mtime < jpg.stat().st_mtime
+        or mov.stat().st_mtime < media.path.stat().st_mtime
     )
     if needs_build:
-        # 29.97-compatible integer 30 fps keeps the still timebase simple.
-        cmd = [
-            ffmpeg_exe(),
-            "-y",
-            "-hide_banner",
-            "-loglevel",
-            "error",
-            "-loop",
-            "1",
-            "-i",
-            str(jpg),
-            "-t",
-            f"{duration:.3f}",
-            "-r",
-            "30",
-            "-c:v",
-            "libx264",
-            "-pix_fmt",
-            "yuv420p",
-            "-vf",
-            f"scale={width}:{height}",
-            "-an",
-            str(mov),
-        ]
-        subprocess.run(cmd, check=True)
+        try:
+            _encode_still_mov(media.path, mov, media, duration)
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            jpg = STILLS_DIR / f"{stem}_hold.jpg"
+            subprocess.run(
+                ["sips", "-s", "format", "jpeg", str(media.path), "--out", str(jpg)],
+                check=True,
+                capture_output=True,
+            )
+            _encode_still_mov(jpg, mov, media, duration)
         if not mov.is_file() or mov.stat().st_size < 1000:
             raise RuntimeError(f"Failed to build still MOV for {media.asset_name}")
 
@@ -390,19 +454,29 @@ def build_fcpxml(
         "frameDuration": format_frames(1, seq_tb),
         "width": str(seq_w),
         "height": str(seq_h),
+        "colorSpace": "1-1-1 (Rec. 709)",
     }
-    if seq_w == 1920 and seq_h == 1080:
+    clip_spaces = [
+        fcpxml_color_space(m.color_primaries, m.color_transfer, m.color_space)
+        for m in used_media
+    ]
+    tagged = [space for space in clip_spaces if space]
+    if tagged and len(set(tagged)) == 1:
+        seq_format_attrs["colorSpace"] = tagged[0]
+    if seq_w == 1920 and seq_h == 1080 and "Rec. 709" in seq_format_attrs["colorSpace"]:
         seq_format_attrs["name"] = "FFVideoFormat1080p2997"
     ET.SubElement(resources, "format", seq_format_attrs)
 
     asset_ids: dict[str, str] = {}
     asset_timebases: dict[str, Timebase] = {}
     asset_durations_frames: dict[str, int] = {}
-    asset_dimensions: dict[str, tuple[int, int]] = {}
-    format_ids: dict[tuple[int, int, int, int], str] = {}  # w,h,ticks,timescale
+    format_ids: dict[tuple[int, int, int, int, str], str] = {}
     spatial_conform = active_spatial_conform()
 
     for media in used_media:
+        color_space = fcpxml_color_space(
+            media.color_primaries, media.color_transfer, media.color_space
+        )
         if is_still(media):
             # CRITICAL: never put JPEG/HEIC on an <asset-clip> — FCP null-derefs.
             media_path, width, height, still_dur = ensure_still_video(media)
@@ -423,22 +497,20 @@ def build_fcpxml(
             asset_durations_frames[media.asset_name] = total_frames
 
         asset_timebases[media.asset_name] = tb
-        asset_dimensions[media.asset_name] = (width, height)
 
-        fmt_key = (width, height, tb.ticks_per_frame, tb.timescale)
+        fmt_key = (width, height, tb.ticks_per_frame, tb.timescale, color_space or "")
         if fmt_key not in format_ids:
             fid = alloc_id()
             format_ids[fmt_key] = fid
-            ET.SubElement(
-                resources,
-                "format",
-                {
-                    "id": fid,
-                    "frameDuration": format_frames(1, tb),
-                    "width": str(width),
-                    "height": str(height),
-                },
-            )
+            fmt_attrs = {
+                "id": fid,
+                "frameDuration": format_frames(1, tb),
+                "width": str(width),
+                "height": str(height),
+            }
+            if color_space:
+                fmt_attrs["colorSpace"] = color_space
+            ET.SubElement(resources, "format", fmt_attrs)
 
         aid = alloc_id()
         asset_ids[media.asset_name] = aid
@@ -463,12 +535,12 @@ def build_fcpxml(
             {"kind": "original-media", "src": file_url(media_path)},
         )
 
-    # Import-friendly: library → event → project (no library @location required).
-    library = ET.SubElement(root, "library")
+    # Wide Gamut HDR library so FCP does not tone-map iPhone HLG/P3 into Rec. 709.
+    library = ET.SubElement(root, "library", {"colorProcessing": "wide"})
     event = ET.SubElement(library, "event", {"name": event_name})
     project = ET.SubElement(event, "project", {"name": project_name})
 
-    spine_specs: list[tuple[dict[str, str], float]] = []
+    spine_specs: list[dict[str, str]] = []
     timeline_frames = 0
 
     for clip in clips:
@@ -491,15 +563,7 @@ def build_fcpxml(
             start_frames = max(0, max_frames - src_need)
         attrs["start"] = format_frames(start_frames, src_tb)
 
-        src_w, src_h = asset_dimensions[clip.asset]
-        scale = transform_scale_for_clip(
-            src_w,
-            src_h,
-            seq_w=seq_w,
-            seq_h=seq_h,
-            mode=spatial_conform,
-        )
-        spine_specs.append((attrs, scale))
+        spine_specs.append(attrs)
         timeline_frames += tl_frames
 
     sequence = ET.SubElement(
@@ -515,17 +579,9 @@ def build_fcpxml(
         },
     )
     spine = ET.SubElement(sequence, "spine")
-    for attrs, scale in spine_specs:
+    for attrs in spine_specs:
         clip_el = ET.SubElement(spine, "asset-clip", attrs)
-        # FCP defaults to Fit. Scale > 1 ≈ Fill zoom for portrait sources.
-        # Wide (landscape) clips stay at 1.0 under fill_vertical_fit_wide.
-        if scale > 1.001:
-            scale_s = f"{scale:.6f}".rstrip("0").rstrip(".")
-            ET.SubElement(
-                clip_el,
-                "adjust-transform",
-                {"scale": f"{scale_s} {scale_s}"},
-            )
+        ET.SubElement(clip_el, "adjust-conform", {"type": spatial_conform})
 
     return root
 

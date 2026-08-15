@@ -340,9 +340,9 @@
           <label>
             <span>How clips fill the frame</span>
             <select name="spatial_conform">
-              <option value="fill_vertical_fit_wide" {% if summary.config.spatial_conform not in ["fill", "fit"] %}selected{% endif %}>Portrait fills · landscape fits (recommended)</option>
-              <option value="fill" {% if summary.config.spatial_conform == "fill" %}selected{% endif %}>Fill everything (may crop)</option>
-              <option value="fit" {% if summary.config.spatial_conform == "fit" %}selected{% endif %}>Fit everything (letterbox)</option>
+              <option value="fit" {% if summary.config.spatial_conform not in ["fill", "none"] %}selected{% endif %}>Fit — whole image, no crop (recommended)</option>
+              <option value="none" {% if summary.config.spatial_conform == "none" %}selected{% endif %}>Original size — no scale</option>
+              <option value="fill" {% if summary.config.spatial_conform == "fill" %}selected{% endif %}>Fill — crop to the frame</option>
             </select>
           </label>
         </div>

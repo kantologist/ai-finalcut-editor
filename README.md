@@ -14,7 +14,7 @@ Runs entirely on your Mac: vision analysis + edit planning via OpenAI, determini
 - **Desktop app** (native WebKit window) or browser UI / CLI
 - Vision analysis of proxy frames → ranked candidate shots
 - LLM Edit Decision List with hard validation (no invented assets)
-- Deterministic **FCPXML** export (9:16, Fill for portrait / Fit for landscape)
+- Deterministic **FCPXML** export (original framing and color; Fit by default)
 - Create, revise, resume failed jobs from the last completed stage
 - Editable prompts + model picker with task scores / cost estimates
 

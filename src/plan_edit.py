@@ -388,8 +388,7 @@ def delivery_frame_note() -> str:
     label = label or f"{width}x{height}"
     return (
         f"Delivery sequence is {width}×{height} ({label}). "
-        "Prefer candidates whose aspect matches; wide/landscape sources Fit (letterbox), "
-        "vertical sources Fill. "
+        "Keep each shot's original framing and color; do not crop, reframe, or grade. "
         "Group vertical/square shots first, then landscape/wide. "
         f"Prefer ~4–6s holds per shot (max {max_hold:.1f}s)."
     )

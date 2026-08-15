@@ -46,6 +46,9 @@ class MediaRecord(BaseModel):
     fps: float | None = None
     creation_time: str | None = None
     favorite: bool | None = Field(default=None)
+    color_primaries: str | None = None
+    color_transfer: str | None = None
+    color_space: str | None = None
 
 
 def _parse_rate(value: str | None) -> float | None:
@@ -94,6 +97,34 @@ def _ffprobe(path: Path) -> dict[str, Any]:
         text=True,
     )
     return json.loads(result.stdout)
+
+
+def _clean_color_tag(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text or text.lower() in {"unknown", "unspecified", "na", "n/a"}:
+        return None
+    return text
+
+
+def _color_from_stream(stream: dict[str, Any] | None) -> dict[str, str | None]:
+    if not stream:
+        return {"color_primaries": None, "color_transfer": None, "color_space": None}
+    transfer = stream.get("color_transfer") or stream.get("color_trc")
+    return {
+        "color_primaries": _clean_color_tag(stream.get("color_primaries")),
+        "color_transfer": _clean_color_tag(transfer),
+        "color_space": _clean_color_tag(stream.get("color_space") or stream.get("colorspace")),
+    }
+
+
+def _ffprobe_color(path: Path) -> dict[str, str | None]:
+    try:
+        probe = _ffprobe(path)
+    except (FileNotFoundError, subprocess.CalledProcessError, json.JSONDecodeError, OSError):
+        return {"color_primaries": None, "color_transfer": None, "color_space": None}
+    return _color_from_stream(_primary_video_stream(probe))
 
 
 def _primary_video_stream(probe: dict[str, Any]) -> dict[str, Any] | None:
@@ -148,6 +179,7 @@ def inspect_video(path: Path) -> MediaRecord:
         # Prefer nominal r_frame_rate (e.g. 29.97) over irregular avg_frame_rate.
         fps = _parse_rate(stream.get("r_frame_rate")) or _parse_rate(stream.get("avg_frame_rate"))
 
+    color = _color_from_stream(stream)
     return MediaRecord(
         id=path.stem,
         path=str(path.resolve()),
@@ -158,6 +190,9 @@ def inspect_video(path: Path) -> MediaRecord:
         fps=fps,
         creation_time=_creation_time_from_probe(probe, stream),
         favorite=None,
+        color_primaries=color["color_primaries"],
+        color_transfer=color["color_transfer"],
+        color_space=color["color_space"],
     )
 
 
@@ -191,6 +226,7 @@ def _exiftool_image(path: Path) -> MediaRecord | None:
         or _normalize_creation_time(row.get("CreateDate"))
         or _normalize_creation_time(row.get("MediaCreateDate"))
     )
+    color = _ffprobe_color(path)
     return MediaRecord(
         id=path.stem,
         path=str(path.resolve()),
@@ -201,6 +237,9 @@ def _exiftool_image(path: Path) -> MediaRecord | None:
         fps=None,
         creation_time=creation,
         favorite=None,
+        color_primaries=color["color_primaries"],
+        color_transfer=color["color_transfer"],
+        color_space=color["color_space"],
     )
 
 
@@ -228,6 +267,7 @@ def inspect_image(path: Path) -> MediaRecord:
         with Image.open(path) as image:
             width, height = image.size
             creation_time = _pillow_creation_time(image)
+        color = _ffprobe_color(path)
         return MediaRecord(
             id=path.stem,
             path=str(path.resolve()),
@@ -238,6 +278,9 @@ def inspect_image(path: Path) -> MediaRecord:
             fps=None,
             creation_time=creation_time,
             favorite=None,
+            color_primaries=color["color_primaries"],
+            color_transfer=color["color_transfer"],
+            color_space=color["color_space"],
         )
     except Exception:
         record = _exiftool_image(path)

@@ -9,7 +9,7 @@
   "vision_batch_size": 8,
   "request_pause_sec": 1.0,
   "max_retries": 12,
-  "spatial_conform": "fill_vertical_fit_wide",
+  "spatial_conform": "fit",
   "sequence_width": 1080,
   "sequence_height": 1920,
   "score_weights": {

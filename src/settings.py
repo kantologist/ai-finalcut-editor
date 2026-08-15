@@ -63,7 +63,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "vision_batch_size": 8,
     "request_pause_sec": 1.0,
     "max_retries": 12,
-    "spatial_conform": "fill_vertical_fit_wide",
+    "spatial_conform": "fit",
     "sequence_width": 1080,
     "sequence_height": 1920,
     "score_weights": dict(DEFAULT_SCORE_WEIGHTS),
@@ -287,7 +287,11 @@ def load_settings() -> dict[str, Any]:
         return deepcopy(DEFAULT_SETTINGS)
     if not isinstance(raw, dict):
         return deepcopy(DEFAULT_SETTINGS)
-    return _deep_merge(DEFAULT_SETTINGS, raw)
+    merged = _deep_merge(DEFAULT_SETTINGS, raw)
+    if merged.get("spatial_conform") == "fill_vertical_fit_wide":
+        # Former default cropped portraits and looked like a reframe.
+        merged["spatial_conform"] = "fit"
+    return merged
 
 
 def validate_settings(payload: dict[str, Any]) -> dict[str, Any]:
@@ -344,11 +348,11 @@ def validate_settings(payload: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("max_retries must be between 0 and 50")
     data["max_retries"] = retries
 
-    conform = str(data.get("spatial_conform") or "fill_vertical_fit_wide").strip().lower()
-    if conform not in {"fill", "fit", "fill_vertical_fit_wide"}:
-        raise ValueError(
-            "spatial_conform must be 'fill', 'fit', or 'fill_vertical_fit_wide'"
-        )
+    conform = str(data.get("spatial_conform") or "fit").strip().lower()
+    if conform == "fill_vertical_fit_wide":
+        conform = "fit"
+    if conform not in {"fill", "fit", "none"}:
+        raise ValueError("spatial_conform must be 'fit', 'fill', or 'none'")
     data["spatial_conform"] = conform
 
     seq_w = int(data.get("sequence_width", 1080))

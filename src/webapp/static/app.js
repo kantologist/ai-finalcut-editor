@@ -815,7 +815,7 @@
       vision_batch_size: Number(fd.get("vision_batch_size")),
       request_pause_sec: Number(fd.get("request_pause_sec")),
       max_retries: Number(fd.get("max_retries")),
-      spatial_conform: String(fd.get("spatial_conform") || "fill_vertical_fit_wide"),
+      spatial_conform: String(fd.get("spatial_conform") || "fit"),
       sequence_width: Number(fd.get("sequence_width")),
       sequence_height: Number(fd.get("sequence_height")),
       score_weights: { ...cachedSettings.score_weights },
